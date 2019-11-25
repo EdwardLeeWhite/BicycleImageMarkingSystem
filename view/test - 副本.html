@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Document</title>
+</head>
+
+<body>
+    <div style="display:none">
+        <img id="source" src=''>
+    </div>
+    <canvas id="canvas1" width="1280" height="720" style="border:1px solid red;"></canvas>
+    <!--css只能改变显示大小，画板真是大小需要width= height= 来改-->
+    <!--<input type="text" id="idx" /><button id="btn">delete</button>-->
+    <table border="10">
+        <thead>
+            <tr>
+                <th>编号</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody id="tbody1">
+        </tbody>
+    </table>
+    <button id='saveDraft'>saveDraft</button>
+</body>
+<script src="http://apps.bdimg.com/libs/jquery/2.1.1/jquery.min.js" type="text/javascript"></script>
+<!--在引入外部JS文件的情况下，不能在<script></script>之间插入代码，插入的代码不执行，只执行引入的外部文件。-->
+<script>
+    //为了方便其他函数如(del,refresh等)调用，设置为全局变量
+    var listSx = [],
+        listSy = [],
+        listWid = [],
+        listHei = []; //可以从数据库中获取初值
+
+    var index;
+    var imgId;
+    /*$('#source').attr("src", 'http://localhost:8081/getImg?id=' + imgId);
+    var current_img = document.getElementById('source');
+    var image_width = document.getElementById('source').naturalWidth;
+    var image_height = document.getElementById('source').naturalHeight;*/
+    var current_img;
+    var image_width;
+    var image_height;
+    var context;
+    var canvas;
+    ////////////////////////////////////////////////////////////////////draw rect//////
+    var sx, sy;
+    var lineWidth;
+    var color;
+    var mouseState;
+    //////////////////////////////////////////////////////////////////////////////////
+    $(function() {
+        imgId = 0;
+        current_img = new Image();
+        current_img.src = 'http://localhost:8081/getImg?id=' + imgId;
+        image_width = current_img.width;
+        image_height = current_img.height;
+        context = document.getElementById("canvas1").getContext('2d');
+        canvas = document.getElementById('canvas1');
+        ////////////////////////////////////////////////////////////////////draw rect//////
+        lineWidth = 2;
+        color = 'red';
+        mouseState = 0;
+        //////////////////////////////////////////////////////////////////////////////////
+        current_img.crossOrigin = "anonymous";
+        console.log(image_width);
+        console.log(image_height);
+        //var canvas = $('#canvas1')
+        context.strokeStyle = color;
+        context.fillStyle = color;
+        context.lineWidth = lineWidth;
+        context.clearRect(0, 0, canvas.width, canvas.height)
+        current_img.onload = function() {
+            getData();
+            refresh();
+            //如果没有绘制成功就刷新本页面
+            //location.reload([bForceGet])  //刷新页面的方法
+            //https://www.w3school.com.cn/tags/canvas_imagedata_data.asp and https://blog.csdn.net/qq_35430000/article/details/83348376    计算像素总值，若和=0，则没绘图成功，刷新一次
+            var pixVal = context.getImageData(0, 0, canvas.width, canvas.height).data;
+            var checkVal = 0;
+            for (var i = 0; i < pixVal.length; i += 4) {
+                checkVal = checkVal + pixVal[i + 0]
+                checkVal = checkVal + pixVal[i + 1]
+                checkVal = checkVal + pixVal[i + 2]
+                checkVal = checkVal + pixVal[i + 3]
+            }
+            if (checkVal == 0) {
+                location.reload();
+            }
+            makeTable();
+        };
+        //输出鼠标坐标
+        var mouX, mouY;
+        var drawing = function(e) {
+            mouX = e.pageX - $(this).offset().left;
+            mouY = e.pageY - $(this).offset().top;
+            console.log(mouX + ' ' + mouY);
+        }
+        $('#canvas1').mousemove(drawing);
+        console.log(index);
+        $('#canvas1').mousedown(function(e) {
+            if (mouseState == 0) {
+                mouseState = 1;
+                sx = mouX;
+                sy = mouY;
+                $('#canvas1').on('mousemove', function(e) {
+                    var nowx = mouX;
+                    var nowy = mouY;
+
+                    refresh();
+                    if (Math.abs(nowx - sx) >= (3 * lineWidth) && Math.abs(nowy - sy) >= (3 * lineWidth)) {
+                        context.beginPath();
+                        context.rect(sx, sy, nowx - sx, nowy - sy);
+                        context.stroke();
+                    }
+                })
+            }
+        })
+        $('#canvas1').mouseup(function(e) {
+            if (mouseState == 1) {
+                $('#canvas1').off("mousemove");
+                $('#canvas1').mousemove(drawing);
+                mouseState = 0;
+                var nowx = mouX;
+                var nowy = mouY;
+
+                refresh();
+                if (Math.abs(nowx - sx) >= (3 * lineWidth) && Math.abs(nowy - sy) >= (3 * lineWidth)) {
+                    context.beginPath();
+                    context.rect(sx, sy, nowx - sx, nowy - sy);
+                    context.stroke();
+                    listSx.push(sx);
+                    listSy.push(sy);
+                    listWid.push(nowx - sx);
+                    listHei.push(nowy - sy);
+                    index++;
+                }
+                refresh();
+                makeTable();
+                console.log(index);
+            }
+        })
+
+        //delete按钮事件
+        $('#btn').click(function() {
+            var idx = $('#idx').val();
+            var intIdx = parseInt(idx);
+            var intIdx = intIdx - 1;
+            listSx.splice(intIdx, 1);
+            listSy.splice(intIdx, 1);
+            listWid.splice(intIdx, 1);
+            listHei.splice(intIdx, 1);
+            refresh();
+            console.log(intIdx)
+        });
+        ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+    });
+    //获取标记数据
+    function getData() {
+        $.get("/getData", function(data) {
+            console.log(data);
+            index = data.length;
+            for (var i = 0; i < index; i++) {
+                listSx.push(data[i]['nodex']);
+                listSy.push(data[i]['nodey']);
+                listWid.push(data[i]['width']);
+                listHei.push(data[i]['height']);
+            }
+            console.log(index);
+            refresh();
+            makeTable();
+        })
+    }
+
+    $('#saveDraft').click(function() {
+        var data = {
+            index: index,
+            x: listSx,
+            y: listSy,
+            width: listWid,
+            height: listHei
+        };
+        $.post("/saveDraft", {
+            index: index,
+            x: listSx,
+            y: listSy,
+            width: listWid,
+            height: listHei
+        }, function(data) {});
+    })
+
+    function makeTable() {
+        var table_content = ''
+        for (var i = 0; i < index; i++) {
+            table_content = table_content + '<tr><th>' + (i + 1).toString() + '</th><th><button onclick="delRect(' + (i + 1).toString() + ')">delete</button></th></tr>'
+        }
+        $("#tbody1").html(table_content)
+    }
+
+    function refresh() {
+        context.strokeStyle = color;
+        context.fillStyle = color;
+        context.lineWidth = lineWidth;
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(current_img, 0, 0, image_width, image_height, 0, 0, image_width, image_height);
+        for (var i = 0; i < index; i++) {
+            context.beginPath();
+            context.rect(listSx[i], listSy[i], listWid[i], listHei[i]);
+            context.stroke();
+            context.font = "30px Georgia";
+            var x = listSx[i] + (listWid[i] / 2);
+            var y = listSy[i] + (listHei[i] / 2);
+            context.fillText((i + 1).toString(), x, y);
+            console.log("zuobiao: " + listSx[i] + " " + listSy[i]);
+            console.log("changkuan: " + listWid[i] / 2 + " " + listHei[i] / 2);
+            console.log((i + 1).toString() + ' ' + x + ' ' + y);
+        }
+
+        console.log("rect done!");
+        console.log(index);
+    }
+
+    function delRect(i) {
+        i = i - 1;
+        listSx.splice(i, 1);
+        listSy.splice(i, 1);
+        listWid.splice(i, 1);
+        listHei.splice(i, 1);
+        index--;
+        refresh();
+        makeTable();
+    }
+</script>
+
+</html>

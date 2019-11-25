@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Document</title>
+</head>
+
+<body>
+    <div style="display:none">
+        <img id="source" src=''>
+    </div>
+    <canvas id="canvas1" width="1024" height="683" style="border:1px solid red;"></canvas>
+    <br>
+    <button id='complement'>完成绘制</button>
+    <!--css只能改变显示大小，画板真是大小需要width= height= 来改-->
+    <!--<input type="text" id="idx" /><button id="btn">delete</button>-->
+    <table border="3">
+        <thead>
+            <tr>
+                <th>编号</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody id="tbody1">
+        </tbody>
+    </table>
+    <button id='saveDraft'>保存草稿</button>
+</body>
+<script src="http://apps.bdimg.com/libs/jquery/2.1.1/jquery.min.js" type="text/javascript"></script>
+<!--在引入外部JS文件的情况下，不能在<script></script>之间插入代码，插入的代码不执行，只执行引入的外部文件。-->
+<script>
+    var markX;
+    var markY;
+    var nodeX;
+    var nodeY;
+    var markID;
+    var imgId;
+    var current_img;
+    var image_width;
+    var image_height;
+    var context;
+    var canvas;
+    ////////////////////////////////////////////////////////////////////draw rect//////
+    var lineWidth;
+    var color;
+    //////////////////////////////////////////////////////////////////////////////////
+    var startDraw;
+    $(function() {
+        markX = [];
+        markY = [];
+        nodeX = [];
+        nodeY = [];
+        markID = 0;
+        imgId = 0;
+        current_img = new Image();
+        current_img.src = 'http://localhost:8081/getImg?id=' + imgId;
+        image_width = current_img.width;
+        image_height = current_img.height;
+        context = document.getElementById("canvas1").getContext('2d');
+        canvas = document.getElementById('canvas1');
+        ////////////////////////////////////////////////////////////////////draw rect//////
+        lineWidth = 2;
+        color = 'red';
+        //////////////////////////////////////////////////////////////////////////////////
+        startDraw = 0;
+        //////////////////////////////////////////////////////////////////////////////////
+        current_img.crossOrigin = "anonymous";
+        console.log(image_width);
+        console.log(image_height);
+        //var canvas = $('#canvas1')
+        context.strokeStyle = color;
+        context.fillStyle = color;
+        context.lineWidth = lineWidth;
+        context.clearRect(0, 0, canvas.width, canvas.height)
+        current_img.onload = function() {
+            getData();
+            refresh();
+            //如果没有绘制成功就刷新本页面
+            //location.reload([bForceGet])  //刷新页面的方法
+            //https://www.w3school.com.cn/tags/canvas_imagedata_data.asp and https://blog.csdn.net/qq_35430000/article/details/83348376    计算像素总值，若和=0，则没绘图成功，刷新一次
+            var pixVal = context.getImageData(0, 0, canvas.width, canvas.height).data;
+            var checkVal = 0;
+            for (var i = 0; i < pixVal.length; i += 4) {
+                checkVal = checkVal + pixVal[i + 0]
+                checkVal = checkVal + pixVal[i + 1]
+                checkVal = checkVal + pixVal[i + 2]
+                checkVal = checkVal + pixVal[i + 3]
+            }
+            if (checkVal == 0) {
+                location.reload();
+            }
+        };
+        //输出鼠标坐标
+        var mouX, mouY;
+        var drawing = function(e) {
+            mouX = e.pageX - $(this).offset().left;
+            mouY = e.pageY - $(this).offset().top;
+            console.log(mouX + ' ' + mouY);
+        }
+        $('#canvas1').mousemove(drawing);
+        $('#canvas1').mousedown(function(e) {
+            if (startDraw == 0) {
+                startDraw = 1;
+                context.beginPath();
+                context.moveTo(mouX, mouY);
+            } else {
+                context.lineTo(mouX, mouY);
+                context.stroke();
+                context.beginPath();
+                context.moveTo(mouX, mouY);
+            }
+            nodeX.push(mouX);
+            nodeY.push(mouY);
+            console.log("push X:" + nodeX + " Y:" + nodeX);
+
+        });
+        $('#complement').click(function() {
+            console.log("node.length=" + nodeX.length);
+            if (nodeX.length > 2) {
+                markX.push(nodeX);
+                markY.push(nodeY);
+                makeTable();
+                console.log("x:" + markX);
+                console.log("y:" + markY);
+            }
+            nodeX = [];
+            nodeY = [];
+            startDraw = 0;
+            refresh();
+            console.log(markX);
+            console.log(markY);
+        });
+    });
+
+    //获取标记数据
+    function getData() {
+        $.get("/getData", function(data) {
+            console.log(data);
+            var len = data.length;
+            for (var i = 0; i < len; i++) {
+                var num = data[i]['num'];
+                var tmpx = [];
+                var tmpy = [];
+                for (var j = 1; j <= num; j++) {
+                    tmpx.push(data[i]['x' + j]);
+                    tmpy.push(data[i]['y' + j]);
+                }
+                markX.push(tmpx);
+                markY.push(tmpy);
+            }
+            refresh();
+            makeTable();
+        })
+    }
+    //保存草稿
+    $('#saveDraft').click(function() {
+        $.post("/saveDraft", {
+            imgId: imgId,
+            length: markX.length,
+            markX: markX,
+            markY: markY
+        }, function(data) {});
+    })
+
+    function refresh(clr = color, lw = lineWidth, idx = -1, targetclr = 'blue') {
+        console.log(idx);
+        context.strokeStyle = clr;
+        context.fillStyle = clr;
+        context.lineWidth = lw;
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(current_img, 0, 0, image_width, image_height, 0, 0, image_width, image_height);
+        var ml = markX.length;
+        for (var i = 0; i < ml; i++) {
+            var nl = markX[i].length;
+            context.beginPath();
+            context.moveTo(markX[i][0], markY[i][0]);
+            for (var j = 1; j < nl; j++) {
+                context.lineTo(markX[i][j], markY[i][j]);
+            }
+            context.lineTo(markX[i][0], markY[i][0]);
+            if (i == idx) {
+                context.strokeStyle = targetclr;
+                context.stroke();
+                context.strokeStyle = clr;
+            } else {
+                context.stroke();
+            }
+        }
+        console.log(nodeY.length);
+        if (nodeX.length > 0) {
+            var len = nodeX.length;
+            context.beginPath();
+            context.moveTo(nodeX[0], nodeY[0]);
+            for (var i = 1; i < len; i++) {
+                context.lineTo(nodeX[i], nodeY[i]);
+            }
+            context.stroke();
+            context.beginPath();
+            context.moveTo(nodeX[len - 1], nodeY[len - 1]);
+        }
+    }
+
+    function makeTable() {
+        var table_content = ''
+        var ml = markX.length;
+        for (var i = 0; i < ml; i++) {
+            table_content = table_content + '<tr><th>' + (i + 1).toString() + '</th><th><button onmouseover="targetMark(' + (i + 1).toString() + ')" onmouseout="refresh()" onclick="delRect(' + (i + 1).toString() + ')">delete</button></th></tr>'
+        }
+        $("#tbody1").html(table_content)
+    }
+
+    function delRect(i) {
+        i = i - 1;
+        markX.splice(i, 1);
+        markY.splice(i, 1);
+        refresh();
+        makeTable();
+    }
+
+    function targetMark(i) {
+        var idx = i - 1;
+        refresh(color, lineWidth, idx, "blue");
+    }
+</script>
+
+</html>
